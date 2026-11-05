@@ -297,9 +297,8 @@ struct SmartAlarmView: View {
                 .buttonStyle(NoopButtonStyle(.secondary, fullWidth: true))
             }
         }
-        .sheet(isPresented: $showNap) {
+        .fullScreenCover(isPresented: $showNap) {
             NapView(days: model.repo.days)
-                .noopSheetPresentation(largeFirst: true)
         }
     }
     #endif

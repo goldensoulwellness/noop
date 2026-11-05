@@ -521,9 +521,8 @@ struct LiquidTodayView: View {
         .fullScreenCover(isPresented: $showSleepClock) {
             SleepClockCover(onClose: { showSleepClock = false })
         }
-        .sheet(isPresented: $showNap) {
+        .fullScreenCover(isPresented: $showNap) {
             NapView(days: repo.days)
-                .noopSheetPresentation(largeFirst: true)
         }
         #endif
         #if os(macOS)
