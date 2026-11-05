@@ -2,10 +2,14 @@ import StrandAnalytics
 import StrandDesign
 import SwiftUI
 
-/// The bedside Sleep Clock: a near-black full-screen page that stays on all night. A dim red time, a
-/// battery that fills as sleep is banked against the night's need, one line that says where the night
-/// stands, and — once the battery is full — the strap buzz at the next light moment. Tap anywhere for a
-/// brief brighter readout; "I'm up" silences the strap; Exit needs two taps so a sleepy touch can't end it.
+/// The bedside Sleep Clock: a near-black page that stays on all night, read with the phone lying on its
+/// side. The time sits in the middle, the sleep battery stands on the right as eight gas-gauge pills that
+/// light from the bottom as sleep is banked against the night's need, and one line says where the night
+/// stands. Once full, the strap buzzes at the next light moment. The screen never brightens: a tap only
+/// lifts the dim overlay for a moment; "I'm up" silences the strap; Exit needs two taps.
+///
+/// The iPhone target is portrait-only, so the page draws its landscape layout rotated a quarter turn
+/// rather than asking the app to support landscape for one screen.
 struct SleepClockView: View {
     @EnvironmentObject private var model: AppModel
     @StateObject private var controller: SleepClockController
@@ -19,39 +23,18 @@ struct SleepClockView: View {
     }
 
     var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-            TimelineView(.periodic(from: .now, by: 30)) { context in
-                VStack(spacing: 28) {
-                    Spacer(minLength: 0)
-                    Text(Self.clockFormatter.string(from: context.date))
-                        .font(StrandFont.display(84))
-                        .tracking(StrandFont.displayTracking(84))
-                        .foregroundStyle(StrandPalette.nightClockInk)
-                        .accessibilityLabel(Text("Time \(Self.clockFormatter.string(from: context.date))"))
-                    SleepBatteryGauge(fraction: controller.snapshot?.fraction ?? 0,
-                                      settling: controller.snapshot?.asleepSince == nil)
-                        .frame(width: 240, height: 110)
-                    Text(statusLine(now: context.date))
-                        .font(StrandFont.headline)
-                        .foregroundStyle(StrandPalette.nightClockInk)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.horizontal, 32)
-                    if let stage = controller.snapshot?.stage, !controller.isBuzzing {
-                        Text(Self.label(for: stage))
-                            .font(StrandFont.overline)
-                            .tracking(StrandFont.overlineTracking)
-                            .foregroundStyle(StrandPalette.nightClockInk.opacity(0.7))
-                    }
-                    Spacer(minLength: 0)
-                    controls
-                        .padding(.bottom, 24)
-                }
+        GeometryReader { geo in
+            ZStack {
+                Color.black.ignoresSafeArea()
+                landscape(size: CGSize(width: geo.size.height, height: geo.size.width))
+                    .frame(width: geo.size.height, height: geo.size.width)
+                    .rotationEffect(.degrees(-90))
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .opacity(controller.peeking ? 1 : 0.55)
+                    .animation(.easeInOut(duration: 0.6), value: controller.peeking)
             }
-            .opacity(controller.peeking || controller.isBuzzing ? 1 : 0.55)
-            .animation(.easeInOut(duration: 0.6), value: controller.peeking)
         }
+        .ignoresSafeArea()
         .contentShape(Rectangle())
         .onTapGesture { controller.peek() }
         .statusBarHidden(true)
@@ -59,6 +42,48 @@ struct SleepClockView: View {
         .preferredColorScheme(.dark)
         .onAppear { controller.start() }
         .onDisappear { controller.stop() }
+    }
+
+    // MARK: Landscape page
+
+    private func landscape(size: CGSize) -> some View {
+        TimelineView(.periodic(from: .now, by: 30)) { context in
+            VStack(spacing: 0) {
+                HStack(spacing: 0) {
+                    Spacer(minLength: 0)
+                    VStack(spacing: 18) {
+                        Text(Self.clockFormatter.string(from: context.date))
+                            .font(StrandFont.display(min(120, size.height * 0.34)))
+                            .tracking(StrandFont.displayTracking(84))
+                            .foregroundStyle(StrandPalette.nightClockInk)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.5)
+                            .accessibilityLabel(Text("Time \(Self.clockFormatter.string(from: context.date))"))
+                        Text(statusLine(now: context.date))
+                            .font(StrandFont.headline)
+                            .foregroundStyle(StrandPalette.nightClockInk)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if let stage = controller.snapshot?.stage, !controller.isBuzzing {
+                            Text(Self.label(for: stage))
+                                .font(StrandFont.overline)
+                                .tracking(StrandFont.overlineTracking)
+                                .foregroundStyle(StrandPalette.nightClockInk.opacity(0.7))
+                        }
+                    }
+                    .padding(.horizontal, 24)
+                    Spacer(minLength: 0)
+                    SleepBatteryGauge(fraction: controller.snapshot?.fraction ?? 0,
+                                      settling: controller.snapshot?.asleepSince == nil)
+                        .frame(width: 96, height: size.height * 0.72)
+                        .padding(.trailing, 40)
+                }
+                .frame(maxHeight: .infinity)
+                controls
+                    .padding(.bottom, 16)
+            }
+            .padding(.top, 16)
+        }
     }
 
     // MARK: Controls
@@ -73,10 +98,9 @@ struct SleepClockView: View {
                 Text("I'm up")
                     .font(StrandFont.title2)
                     .foregroundStyle(Color.black)
-                    .frame(maxWidth: .infinity, minHeight: 64)
+                    .frame(maxWidth: 360, minHeight: 56)
                     .background(StrandPalette.nightClockInk, in: Capsule())
             }
-            .padding(.horizontal, 40)
             .accessibilityHint(Text("Stops the strap buzzing and closes the Sleep Clock"))
         } else {
             let armed = exitArmedUntil.map { $0 > Date() } ?? false
@@ -102,7 +126,7 @@ struct SleepClockView: View {
 
     private func statusLine(now: Date) -> String {
         guard let s = controller.snapshot else { return String(localized: "Starting…") }
-        if controller.isBuzzing { return String(localized: "Buzzing your strap. Tap I'm up.") }
+        if controller.isBuzzing { return String(localized: "100% Sleep! Let's go!") }
         if s.noSignal { return String(localized: "No signal from the strap") }
         guard s.asleepSince != nil else { return String(localized: "Settling in…") }
         let asleep = Self.duration(s.sleepSeconds)
@@ -137,47 +161,65 @@ struct SleepClockView: View {
     }()
 }
 
-/// The sleep battery: a horizontal cell with a nub, filling left to right. Red under 70%, amber to 85%,
-/// green from 85% — the same muted night inks as the clock so the fill adds no light to the room.
+/// The sleep battery as a gas gauge: eight horizontal pills stacked in a vertical cell with a cap, lit
+/// from the bottom as the night fills. Lit pills are red through 74%, amber from 75% to 84% and green from
+/// 85%, in the same muted night inks as the clock so the gauge adds no light to the room.
 struct SleepBatteryGauge: View {
     let fraction: Double
-    /// Before onset: an empty outline with a faint pulse rather than a hard 0%.
+    /// Before onset: empty pills with a dash rather than a hard 0%.
     let settling: Bool
 
+    static let pillCount = 8
+
     private var clamped: Double { min(1, max(0, fraction)) }
+    private var percent: Int { Int((clamped * 100).rounded()) }
+    private var litCount: Int { settling ? 0 : Int((clamped * Double(Self.pillCount)).rounded()) }
     private var fill: Color {
-        if clamped >= 0.85 { return StrandPalette.nightClockFull }
-        if clamped >= 0.70 { return StrandPalette.nightClockMid }
+        if percent >= 85 { return StrandPalette.nightClockFull }
+        if percent >= 75 { return StrandPalette.nightClockMid }
         return StrandPalette.nightClockLow
     }
 
     var body: some View {
-        GeometryReader { geo in
-            let nubWidth: CGFloat = 12
-            let body = CGRect(x: 0, y: 0, width: geo.size.width - nubWidth - 4, height: geo.size.height)
-            let inset: CGFloat = 8
-            ZStack(alignment: .leading) {
+        VStack(spacing: 10) {
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .fill(StrandPalette.nightClockInk)
+                .frame(width: 34, height: 10)
+            VStack(spacing: 8) {
+                ForEach((0..<Self.pillCount).reversed(), id: \.self) { i in
+                    Capsule()
+                        .fill(i < litCount ? fill : Color.clear)
+                        .overlay(Capsule().stroke(StrandPalette.nightClockInk.opacity(i < litCount ? 0 : 0.5), lineWidth: 2))
+                        .frame(maxWidth: .infinity)
+                        .frame(maxHeight: .infinity)
+                        .animation(.easeInOut(duration: 0.8), value: litCount)
+                }
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .stroke(StrandPalette.nightClockInk, lineWidth: 4)
-                    .frame(width: body.width, height: body.height)
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(StrandPalette.nightClockInk)
-                    .frame(width: nubWidth, height: body.height * 0.4)
-                    .offset(x: body.width + 4)
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(fill)
-                    .frame(width: max(0, (body.width - inset * 2) * clamped), height: body.height - inset * 2)
-                    .offset(x: inset)
-                    .animation(.easeInOut(duration: 1.2), value: clamped)
-                Text(settling ? "—" : "\(Int((clamped * 100).rounded()))%")
-                    .font(StrandFont.number(40))
-                    .foregroundStyle(StrandPalette.nightClockInk)
-                    .frame(width: body.width, height: body.height)
-                    .blendMode(.plusLighter)
-            }
+            )
+            Text(settling ? "—" : "\(percent)%")
+                .font(StrandFont.number(30))
+                .foregroundStyle(StrandPalette.nightClockInk)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text("Sleep battery"))
-        .accessibilityValue(Text(settling ? "Not asleep yet" : "\(Int((clamped * 100).rounded())) percent"))
+        .accessibilityValue(Text(settling ? "Not asleep yet" : "\(percent) percent"))
+    }
+}
+
+/// Presents the Sleep Clock from a screen that deliberately does not observe `AppModel` (Today keeps its
+/// body free of per-sample churn): the cover picks the model up from the environment itself.
+struct SleepClockCover: View {
+    @EnvironmentObject private var model: AppModel
+    let onClose: () -> Void
+
+    var body: some View {
+        SleepClockView(model: model, onClose: onClose)
     }
 }

@@ -243,7 +243,7 @@ struct SmartAlarmView: View {
                         Text("Buzz the strap when full")
                             .font(StrandFont.body)
                             .foregroundStyle(StrandPalette.textPrimary)
-                        Text("Waits for a light moment after the battery reaches 100%, up to 30 minutes, then buzzes until you tap I'm up.")
+                        Text("Waits for a light moment after the battery reaches 100%, up to 30 minutes, then buzzes until you tap I'm up. The clock reads sideways: lay your phone on its side, top to the left.")
                             .font(StrandFont.footnote)
                             .foregroundStyle(StrandPalette.textTertiary)
                             .fixedSize(horizontal: false, vertical: true)

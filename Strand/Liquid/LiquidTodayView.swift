@@ -98,6 +98,9 @@ struct LiquidTodayView: View {
     @State private var showSettings = false
     @State private var synthesisExpanded = false
     @State private var showLiveSession = false
+    #if os(iOS)
+    @State private var showSleepClock = false
+    #endif
 
     /// Live Sessions (silent guardian) beta gate — the SAME key the Settings toggle writes. Default ON
     /// (the entry is BETA-labelled in-UI); off removes the Start-session control entirely.
@@ -369,7 +372,20 @@ struct LiquidTodayView: View {
                         case .hero:
                             heroCard
                             if chargeLegacyRRGap { ChargeLegacyRRGapNote() }
-                        case .liveSession: if liveSessionsBeta { liveSessionStartRow }
+                        case .liveSession:
+                            #if os(iOS)
+                            // From 9 PM the Start-session row gives way to the bedside Sleep Clock, the one
+                            // action that matters at that hour; the minute cadence flips it on time.
+                            TimelineView(.periodic(from: .now, by: 60)) { context in
+                                if SleepClockController.isBedtime(context.date) {
+                                    sleepClockStartRow
+                                } else if liveSessionsBeta {
+                                    liveSessionStartRow
+                                }
+                            }
+                            #else
+                            if liveSessionsBeta { liveSessionStartRow }
+                            #endif
                         case .synthesis: synthesisSection
                         case .keyMetrics: keyMetricsSection
                         case .workouts: lastWorkoutsSection
@@ -497,6 +513,11 @@ struct LiquidTodayView: View {
         // screen on iOS (nothing should compete with the ring mid-workout), a sheet on macOS where
         // fullScreenCover doesn't exist.
         .liveSessionCover(isPresented: $showLiveSession)
+        #if os(iOS)
+        .fullScreenCover(isPresented: $showSleepClock) {
+            SleepClockCover(onClose: { showSleepClock = false })
+        }
+        #endif
         #if os(macOS)
         // Hide the mac window toolbar's vibrant material so the full-bleed day-of-sky reads dark + edge-to-edge
         // at the top instead of the white scroll-under-titlebar wash.
@@ -694,6 +715,33 @@ struct LiquidTodayView: View {
         .buttonStyle(LiquidPressStyle())
         .accessibilityLabel("Start a live session. Beta. Silent strap coaching against today's Charge.")
     }
+
+    #if os(iOS)
+    /// The evening replacement for the Start-session row: a deep red, moon-marked button that opens the
+    /// bedside Sleep Clock. Same height as the row it replaces so the layout does not jump at 9 PM.
+    private var sleepClockStartRow: some View {
+        Button { showSleepClock = true } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "moon.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                Text("Start Sleep Clock")
+                    .font(StrandFont.subhead)
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold))
+                    .opacity(0.7)
+            }
+            .foregroundStyle(Color.white)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(StrandPalette.nightClockButton)
+            )
+        }
+        .buttonStyle(LiquidPressStyle())
+        .accessibilityLabel("Start Sleep Clock. Dim sideways clock that fills your sleep battery overnight.")
+    }
+    #endif
 
     private var heroCard: some View {
         HStack(alignment: .top, spacing: 4) {
@@ -2168,6 +2216,12 @@ private struct PullOffsetKey: PreferenceKey {
 /// for a little easter egg: it plays one of several random one-shot animations — wiggle, shake, flip,
 /// spin, bounce, or a jelly squash — with a light haptic.
 private struct LiquidWordmark: View {
+    /// Michael's fork wears its own name on the phone; the Mac app keeps NOOP.
+    #if os(iOS)
+    static let wordmarkText = "MOOP"
+    #else
+    static let wordmarkText = "NOOP"
+    #endif
     @State private var rot = 0.0      // z-rotation (wiggle / spin)
     @State private var scaleX = 1.0   // horizontal scale (jelly squash)
     @State private var scaleY = 1.0   // vertical scale (bounce / jelly)
@@ -2177,7 +2231,7 @@ private struct LiquidWordmark: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            ForEach(Array("NOOP".enumerated()), id: \.offset) { _, ch in
+            ForEach(Array(Self.wordmarkText.enumerated()), id: \.offset) { _, ch in
                 Text(String(ch))
                     .font(StrandFont.rounded(16, weight: .bold))
                     .foregroundStyle(StrandPalette.textTertiary)

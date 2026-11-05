@@ -436,6 +436,9 @@ struct TodayView: View {
     @State private var showDayPicker = false
     @State private var showSettings = false
     @State private var showLiveSession = false
+    #if os(iOS)
+    @State private var showSleepClock = false
+    #endif
     /// The Updates inbox sheet (opened by the header bell). Shared across both platforms.
     /// #1862: the optional Coach launcher sheet, opened from the default-OFF Coach dashboard card.
     /// Presentation state only — nothing is requested from a provider by opening it.
@@ -1657,6 +1660,9 @@ struct TodayView: View {
         .fullScreenCover(isPresented: $showLiveSession) {
             LiveSessionView(onClose: { showLiveSession = false })
         }
+        .fullScreenCover(isPresented: $showSleepClock) {
+            SleepClockCover(onClose: { showSleepClock = false })
+        }
         #else
         .sheet(isPresented: $showLiveSession) {
             LiveSessionView(onClose: { showLiveSession = false })
@@ -1943,7 +1949,19 @@ struct TodayView: View {
         case .hero:
             classicHeroSection
         case .liveSession:
+            #if os(iOS)
+            // From 9 PM the Start-session row gives way to the bedside Sleep Clock, the one action that
+            // matters at that hour. The minute cadence flips it on time while the screen stays open.
+            TimelineView(.periodic(from: .now, by: 60)) { context in
+                if SleepClockController.isBedtime(context.date) {
+                    sleepClockStartSection
+                } else if liveSessionsBeta {
+                    liveSessionStartSection
+                }
+            }
+            #else
             if liveSessionsBeta { liveSessionStartSection }
+            #endif
         case .synthesis:
             synthesisSection
         case .keyMetrics:
@@ -2004,6 +2022,41 @@ struct TodayView: View {
         .buttonStyle(.plain)
         .accessibilityLabel("Start a live session. Beta. Silent strap coaching against today's Charge.")
     }
+
+    #if os(iOS)
+    /// The evening replacement for the Start-session row: a deep red, moon-marked button that opens the
+    /// bedside Sleep Clock. Same height and width as the row it replaces so the layout does not jump.
+    private var sleepClockStartSection: some View {
+        Button { showSleepClock = true } label: {
+            HStack(spacing: NoopMetrics.space3) {
+                Image(systemName: "moon.fill")
+                    .font(StrandFont.headline)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: NoopMetrics.space1) {
+                    Text("Start Sleep Clock")
+                        .font(StrandFont.headline)
+                    Text("Dim sideways clock that fills your sleep battery overnight.")
+                        .font(StrandFont.caption)
+                        .opacity(0.85)
+                }
+                Spacer(minLength: NoopMetrics.space2)
+                Image(systemName: "chevron.right")
+                    .font(StrandFont.caption.weight(.semibold))
+                    .opacity(0.7)
+                    .accessibilityHidden(true)
+            }
+            .foregroundStyle(Color.white)
+            .padding(NoopMetrics.cardPadding)
+            .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: NoopMetrics.cardRadius, style: .continuous)
+                    .fill(StrandPalette.nightClockButton)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Start Sleep Clock. Dim sideways clock that fills your sleep battery overnight.")
+    }
+    #endif
 
     private var recoveryVitalsSection: some View {
         recoveryVitalsCard(displayDay)

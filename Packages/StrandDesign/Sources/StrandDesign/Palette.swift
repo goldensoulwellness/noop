@@ -264,6 +264,8 @@ public enum StrandPalette {
     public static let nightClockLow = Color(hex: "#C62828")
     public static let nightClockMid = Color(hex: "#B8860B")
     public static let nightClockFull = Color(hex: "#2E7D32")
+    /// The evening "Start Sleep Clock" button on Today: a deep red that reads as night without glare.
+    public static let nightClockButton = Color(hex: "#7A1414")
 
     // MARK: Per-metric accents — HRV / SpO₂ / energy / risk. Classic leans the traditional hues (purple HRV, red risk).
     public static var metricCyan:   Color { isClassic ? Color(light: "#2E92B4", dark: "#3FA9C9") : Color(light: "#2E92B4", dark: "#3FA9C9") }

@@ -16,7 +16,8 @@ final class SleepClockController: ObservableObject {
     @Published private(set) var isBuzzing = false
     /// The user tapped "I'm up": no more buzzing this night.
     @Published private(set) var acknowledged = false
-    /// A brief brighter readout after a tap, so a glance in the morning reads at once.
+    /// A brief lift of the dim overlay after a tap, so a glance reads at once. Screen brightness never
+    /// changes: the clock stays at minimum all night, buzzing included.
     @Published private(set) var peeking = false
 
     /// UserDefaults keys for the Alarms-screen toggles.
@@ -29,6 +30,14 @@ final class SleepClockController: ObservableObject {
     static let buzzIntervalSeconds: TimeInterval = 20
     static let maxBuzzes = 30
     static let peekSeconds: TimeInterval = 8
+    /// Bedtime hours: from 9 PM until 4 AM the Today screen offers the Sleep Clock in place of Start session.
+    static let bedtimeStartHour = 21
+    static let bedtimeEndHour = 4
+
+    static func isBedtime(_ date: Date, calendar: Calendar = .current) -> Bool {
+        let hour = calendar.component(.hour, from: date)
+        return hour >= bedtimeStartHour || hour < bedtimeEndHour
+    }
     /// Re-anchor on the real stager at most this often, even if offloads land more frequently.
     static let reanchorMinInterval: TimeInterval = 10 * 60
 
@@ -116,13 +125,11 @@ final class SleepClockController: ObservableObject {
 
     func peek() {
         peeking = true
-        UIScreen.main.brightness = 0.35
         peekTimer?.invalidate()
         peekTimer = Timer.scheduledTimer(withTimeInterval: Self.peekSeconds, repeats: false) { [weak self] _ in
             Task { @MainActor in
                 guard let self, self.running else { return }
                 self.peeking = false
-                UIScreen.main.brightness = 0
             }
         }
     }
