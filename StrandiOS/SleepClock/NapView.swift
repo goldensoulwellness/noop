@@ -25,7 +25,12 @@ struct NapView: View {
 
     init(days: [DailyMetric]) {
         let ledger = SleepModel.debtLedger(days: days, napSleepMinByDay: [:])
-        let debt = ledger.isDebt ? ledger.magnitudeMin : 0
+        var debt = ledger.isDebt ? ledger.magnitudeMin : 0
+        #if DEBUG
+        // Screenshot aid: `defaults write <bundle> sleepClock.demoDebtMin -float 30` pretends this much debt.
+        let demo = UserDefaults.standard.double(forKey: "sleepClock.demoDebtMin")
+        if demo > 0 { debt = demo }
+        #endif
         debtMin = debt
         _goalMinutes = State(initialValue: Self.recommendedGoal(debtMin: debt))
     }
@@ -45,35 +50,45 @@ struct NapView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        ZStack(alignment: .topLeading) {
             ScrollView {
                 VStack(alignment: .leading, spacing: NoopMetrics.gap) {
                     hero
-                    debtCard
-                    goalCard
-                    if !model.ble.state.connected { strapNote }
-                    Button { showClock = true } label: {
-                        Label("Start Nap", systemImage: "moon.zzz.fill")
-                            .frame(maxWidth: .infinity)
+                    VStack(alignment: .leading, spacing: NoopMetrics.gap) {
+                        debtCard
+                        goalCard
+                        if !model.ble.state.connected { strapNote }
+                        Button { showClock = true } label: {
+                            Label("Start Nap", systemImage: "moon.zzz.fill")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(NoopButtonStyle(.primary, fullWidth: true))
+                        .accessibilityHint(Text("Opens the dark nap clock; the strap buzzes when the goal is reached"))
+                        Text("Lay the phone on its side, top to the left. Tap the screen to read it; it dims again by itself.")
+                            .font(StrandFont.footnote)
+                            .foregroundStyle(StrandPalette.textTertiary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    .buttonStyle(NoopButtonStyle(.primary, fullWidth: true))
-                    .accessibilityHint(Text("Opens the dark nap clock; the strap buzzes when the goal is reached"))
-                    Text("Lay the phone on its side, top to the left. Tap the screen to read it; it dims again by itself.")
-                        .font(StrandFont.footnote)
-                        .foregroundStyle(StrandPalette.textTertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(NoopMetrics.cardPadding)
-            }
-            .background(StrandPalette.surfaceBase.ignoresSafeArea())
-            .navigationTitle("Nap")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
+                    .padding(.horizontal, NoopMetrics.cardPadding)
+                    .padding(.bottom, NoopMetrics.cardPadding)
                 }
             }
+            .ignoresSafeArea(edges: .top)
+            // Done floats over the picture, in the corner a thumb reaches first.
+            Button { dismiss() } label: {
+                Text("Done")
+                    .font(StrandFont.headline)
+                    .foregroundStyle(Color.white)
+                    .padding(.horizontal, 16)
+                    .frame(minHeight: 44)
+                    .background(.ultraThinMaterial.opacity(0.9), in: Capsule())
+                    .environment(\.colorScheme, .dark)
+            }
+            .padding(.leading, NoopMetrics.cardPadding)
+            .padding(.top, 12)
+            .accessibilityLabel("Done")
         }
+        .background(StrandPalette.surfaceBase.ignoresSafeArea())
         .fullScreenCover(isPresented: $showClock) {
             SleepClockView(model: model,
                            nap: .init(targetSeconds: goalMinutes * 60, debtMin: debtMin),
@@ -85,10 +100,12 @@ struct NapView: View {
 
     private var hero: some View {
         ZStack(alignment: .bottomLeading) {
-            Image("napHero")
-                .resizable()
-                .aspectRatio(3 / 2, contentMode: .fill)
+            // Drawn as an overlay so the picture's natural width never widens the page: the clear
+            // base owns the layout, the image just paints over it.
+            Color.clear
                 .frame(maxWidth: .infinity)
+                .frame(height: 360)
+                .overlay { Image("napHero").resizable().scaledToFill() }
                 .clipped()
             LinearGradient(colors: [.clear, .black.opacity(0.55)], startPoint: .center, endPoint: .bottom)
             VStack(alignment: .leading, spacing: 4) {
@@ -102,7 +119,9 @@ struct NapView: View {
             }
             .padding(NoopMetrics.cardPadding)
         }
-        .clipShape(RoundedRectangle(cornerRadius: NoopMetrics.cardRadius, style: .continuous))
+        .clipShape(UnevenRoundedRectangle(bottomLeadingRadius: NoopMetrics.cardRadius,
+                                          bottomTrailingRadius: NoopMetrics.cardRadius,
+                                          style: .continuous))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text("Nap time. Cuddle up. We'll buzz your wrist when you've had enough."))
     }
