@@ -87,6 +87,8 @@ enum ScreenIdle {
         case session
         /// A strap history sync, while Settings → "Keep screen on while syncing" is on (iOS).
         case strapSync
+        /// The bedside Sleep Clock, which stays on all night by design (iOS).
+        case sleepClock
     }
 
     /// UserDefaults key for the "Keep screen on while syncing" toggle (default OFF). iOS-only behaviour;

@@ -257,6 +257,13 @@ public enum StrandPalette {
     public static var statusPositive: Color { isClassic ? Color(light: "#2E9E4F", dark: "#46B45A") : Color(light: "#1F8A5B", dark: "#03E095") }
     public static var statusWarning:  Color { isClassic ? Color(light: "#CFA528", dark: "#F2C53D") : Color(light: "#C2792E", dark: "#F0A020") }
     public static var statusCritical: Color { isClassic ? Color(light: "#CB3A2F", dark: "#E5483B") : Color(light: "#C84E1E", dark: "#E0662F") }
+    /// Bedside Sleep Clock ink: a deep red for an OLED screen at minimum brightness, the hue that
+    /// disturbs night vision least. Everything on that screen is drawn in this or a tinted fill of it.
+    public static let nightClockInk = Color(hex: "#C62828")
+    /// The Sleep Clock's battery fills: red / amber / green at the same muted depth as `nightClockInk`.
+    public static let nightClockLow = Color(hex: "#C62828")
+    public static let nightClockMid = Color(hex: "#B8860B")
+    public static let nightClockFull = Color(hex: "#2E7D32")
 
     // MARK: Per-metric accents — HRV / SpO₂ / energy / risk. Classic leans the traditional hues (purple HRV, red risk).
     public static var metricCyan:   Color { isClassic ? Color(light: "#2E92B4", dark: "#3FA9C9") : Color(light: "#2E92B4", dark: "#3FA9C9") }

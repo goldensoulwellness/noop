@@ -39,6 +39,11 @@ struct SmartAlarmView: View {
     // FrameRouter). ≥2 = the strap is persistently refusing the alarm (a corrupted clock/alarm register),
     // which the strapRejectedCard surfaces with reset guidance. @AppStorage so it updates live.
     @AppStorage("alarm.rejectStreak") private var alarmRejectStreak = 0
+    #if os(iOS)
+    /// Sleep Clock: whether the strap buzzes once the sleep battery is full (default on — it is the point).
+    @AppStorage(SleepClockController.buzzAtFullKey) private var sleepClockBuzzAtFull = true
+    @State private var showSleepClock = false
+    #endif
     /// Calendar weekday numbers laid out Monday-first (Mon…Sun → 2,3,4,5,6,7,1), matching AutomationsView.
     private static let weekdayOrder = [2, 3, 4, 5, 6, 7, 1]
 
@@ -49,6 +54,9 @@ struct SmartAlarmView: View {
                        subtitle: "Your strap wake-alarm and the evening wind-down reminder, in one place.") {
             VStack(alignment: .leading, spacing: NoopMetrics.sectionGap) {
                 windowHero
+                #if os(iOS)
+                sleepClockCard
+                #endif
                 strapAlarmCard
                 strapRejectedCard   // #34: only shows when the strap keeps refusing the alarm
                 honestyCard
@@ -205,6 +213,61 @@ struct SmartAlarmView: View {
             }
         }
     }
+
+    #if os(iOS)
+    // MARK: - Sleep Clock (bedside, all night)
+
+    // The phone stays open on a near-black clock all night, so iOS never suspends the strap link; the
+    // battery fills as sleep is banked against the personal need, and the strap buzzes at the next light
+    // moment once it is full. iOS-only: it is the answer to the sideloaded-app wake-alarm gap below.
+    private var sleepClockCard: some View {
+        StrandCard(padding: 20, tint: StrandPalette.accent) {
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Bedside").strandOverline()
+                    HStack(spacing: 10) {
+                        Image(systemName: "battery.75percent")
+                            .foregroundStyle(StrandPalette.accent)
+                            .accessibilityHidden(true)
+                        Text("Sleep Clock")
+                            .font(StrandFont.title2)
+                            .foregroundStyle(StrandPalette.textPrimary)
+                    }
+                }
+                Text("A near-black clock that stays on all night with your phone plugged in. It fills a sleep battery as you sleep and shows how much more you need. Glance at it any time.")
+                    .font(StrandFont.footnote)
+                    .foregroundStyle(StrandPalette.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(alignment: .center, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Buzz the strap when full")
+                            .font(StrandFont.body)
+                            .foregroundStyle(StrandPalette.textPrimary)
+                        Text("Waits for a light moment after the battery reaches 100%, up to 30 minutes, then buzzes until you tap I'm up.")
+                            .font(StrandFont.footnote)
+                            .foregroundStyle(StrandPalette.textTertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                    Toggle("", isOn: $sleepClockBuzzAtFull)
+                        .labelsHidden().toggleStyle(.switch).tint(StrandPalette.accent)
+                        .accessibilityLabel("Buzz the strap when full")
+                }
+                .frame(minHeight: 42)
+                Button {
+                    showSleepClock = true
+                } label: {
+                    Label("Start Sleep Clock", systemImage: "moon.zzz.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(NoopButtonStyle(.primary, fullWidth: true))
+            }
+        }
+        .fullScreenCover(isPresented: $showSleepClock) {
+            SleepClockView(model: model, onClose: { showSleepClock = false })
+        }
+    }
+    #endif
 
     // MARK: - Strap silent wake-alarm (#766, moved here from Automations)
 

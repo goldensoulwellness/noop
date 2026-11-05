@@ -1,0 +1,187 @@
+import Combine
+import Foundation
+import StrandAnalytics
+import UIKit
+
+/// Drives the bedside Sleep Clock: keeps the screen (dim) and the strap link alive all night, feeds the
+/// live heart rate and R-R stream into `SleepBatteryTracker`, re-anchors the estimate on the real stager
+/// each time a history offload lands, and once the sleep battery is full buzzes the strap at the next
+/// light moment (or after a grace period, so a full battery never waits forever).
+///
+/// Owned by `SleepClockView` for the life of the cover. `start()` and `stop()` are balanced: every hold
+/// (idle timer, realtime HR, brightness) is released on stop, so leaving the clock restores the phone.
+@MainActor
+final class SleepClockController: ObservableObject {
+    @Published private(set) var snapshot: SleepBatteryTracker.Snapshot?
+    @Published private(set) var isBuzzing = false
+    /// The user tapped "I'm up": no more buzzing this night.
+    @Published private(set) var acknowledged = false
+    /// A brief brighter readout after a tap, so a glance in the morning reads at once.
+    @Published private(set) var peeking = false
+
+    /// UserDefaults keys for the Alarms-screen toggles.
+    static let buzzAtFullKey = "sleepClock.buzzAtFull"
+
+    /// Once full, wait at most this long for a light moment before buzzing anyway.
+    static let graceSeconds = 30 * 60
+    /// Buzz cadence and cap: a strap buzz every 20 s for up to 10 minutes, then stop (the user is either
+    /// up, or the strap is off the wrist).
+    static let buzzIntervalSeconds: TimeInterval = 20
+    static let maxBuzzes = 30
+    static let peekSeconds: TimeInterval = 8
+    /// Re-anchor on the real stager at most this often, even if offloads land more frequently.
+    static let reanchorMinInterval: TimeInterval = 10 * 60
+
+    let startedAt: Date
+    let needSeconds: Int
+    private var tracker: SleepBatteryTracker
+    private weak var model: AppModel?
+    private var cancellables = Set<AnyCancellable>()
+    private var tickTimer: Timer?
+    private var buzzTimer: Timer?
+    private var peekTimer: Timer?
+    private var buzzCount = 0
+    private var lastReanchorAt: Date?
+    private var savedBrightness: CGFloat = UIScreen.main.brightness
+    private var running = false
+
+    init(model: AppModel) {
+        self.model = model
+        let now = Date()
+        startedAt = now
+        // The same personal need every debt surface measures against (upper-quartile, age-floored);
+        // 8 h until enough nights exist. `SleepModel.debtNeedMin` returns minutes.
+        let needMin = SleepModel.debtNeedMin(days: model.repo.days)
+        needSeconds = Int((needMin.isFinite && needMin > 0 ? needMin : 480) * 60)
+        tracker = SleepBatteryTracker(needSeconds: needSeconds, startedAt: Int(now.timeIntervalSince1970))
+    }
+
+    var buzzAtFull: Bool {
+        UserDefaults.standard.object(forKey: Self.buzzAtFullKey) as? Bool ?? true
+    }
+
+    // MARK: Lifecycle
+
+    func start() {
+        guard !running, let model else { return }
+        running = true
+        ScreenIdle.hold(.sleepClock, true)
+        savedBrightness = UIScreen.main.brightness
+        UIScreen.main.brightness = 0
+        model.startRealtimeHR()
+        model.ble.syncNow()
+
+        let live = model.live
+        live.$heartRate
+            .compactMap { $0 }
+            .sink { [weak self] hr in self?.tracker.add(hr: hr, at: Int(Date().timeIntervalSince1970)) }
+            .store(in: &cancellables)
+        live.$rrSeq
+            .dropFirst()
+            .sink { [weak self, weak live] _ in
+                guard let self, let live else { return }
+                self.tracker.add(rrMs: live.rr, at: Int(Date().timeIntervalSince1970))
+            }
+            .store(in: &cancellables)
+        live.$lastSyncedAt
+            .dropFirst()
+            .compactMap { $0 }
+            .removeDuplicates()
+            .sink { [weak self] _ in Task { await self?.reanchor() } }
+            .store(in: &cancellables)
+
+        tickTimer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.tick() }
+        }
+        tick()
+    }
+
+    func stop() {
+        guard running else { return }
+        running = false
+        stopBuzzing()
+        peekTimer?.invalidate(); peekTimer = nil
+        tickTimer?.invalidate(); tickTimer = nil
+        cancellables.removeAll()
+        model?.stopRealtimeHR()
+        UIScreen.main.brightness = savedBrightness
+        ScreenIdle.hold(.sleepClock, false)
+    }
+
+    /// "I'm up": stop the strap and keep it quiet for the rest of this clock session.
+    func acknowledgeWake() {
+        acknowledged = true
+        stopBuzzing()
+    }
+
+    func peek() {
+        peeking = true
+        UIScreen.main.brightness = 0.35
+        peekTimer?.invalidate()
+        peekTimer = Timer.scheduledTimer(withTimeInterval: Self.peekSeconds, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.running else { return }
+                self.peeking = false
+                UIScreen.main.brightness = 0
+            }
+        }
+    }
+
+    // MARK: Ticking
+
+    private func tick() {
+        let now = Int(Date().timeIntervalSince1970)
+        let snap = tracker.snapshot(at: now)
+        snapshot = snap
+        guard buzzAtFull, !acknowledged, !isBuzzing, snap.fraction >= 1, let fullAt = snap.fullAt else { return }
+        if snap.goodWakeMoment || now - fullAt >= Self.graceSeconds {
+            startBuzzing()
+        }
+    }
+
+    private func startBuzzing() {
+        isBuzzing = true
+        buzzCount = 0
+        buzzOnce()
+        buzzTimer = Timer.scheduledTimer(withTimeInterval: Self.buzzIntervalSeconds, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.buzzOnce() }
+        }
+    }
+
+    private func buzzOnce() {
+        guard buzzCount < Self.maxBuzzes else { stopBuzzing(); return }
+        buzzCount += 1
+        model?.buzzStrapOnce()
+    }
+
+    private func stopBuzzing() {
+        buzzTimer?.invalidate(); buzzTimer = nil
+        isBuzzing = false
+    }
+
+    // MARK: Re-anchoring on the real stager
+
+    /// After an offload, stage the night so far with the real stager (motion + cardio) and hand its verdict
+    /// to the tracker. Skips when the offload brought too little motion for the stager to trust.
+    private func reanchor() async {
+        guard running, let model else { return }
+        if let last = lastReanchorAt, Date().timeIntervalSince(last) < Self.reanchorMinInterval { return }
+        lastReanchorAt = Date()
+        let from = Int(startedAt.timeIntervalSince1970) - 3_600
+        let to = Int(Date().timeIntervalSince1970)
+        let grav = await model.repo.gravitySamplesUnion(from: from, to: to)
+        guard grav.count >= max(20, (to - from) / 120) else { return }
+        let hr = await model.repo.hrSamples(from: from, to: to, limit: 200_000)
+        let rr = await model.repo.rrIntervals(from: from, to: to, limit: 200_000)
+        let tz = TimeZone.current.secondsFromGMT()
+        let useV2 = PuffinExperiment.experimentalSleepV2Enabled
+        let sessions = await Task.detached(priority: .utility) {
+            SleepStager.detectSleep(hr: hr, rr: rr, gravity: grav, tzOffsetSeconds: tz, useSleepStagerV2: useV2)
+        }.value
+        let clockStart = Int(startedAt.timeIntervalSince1970)
+        guard running, let night = sessions.last(where: { $0.end > clockStart }) else { return }
+        let asleep = night.stages.filter { $0.stage != "wake" }.reduce(0) { $0 + max(0, $1.end - $1.start) }
+        tracker.anchor(asleepSince: night.start, sleepSeconds: asleep, anchorTs: night.end)
+        tick()
+    }
+}
