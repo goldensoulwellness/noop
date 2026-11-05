@@ -16,8 +16,8 @@ final class SleepClockController: ObservableObject {
     @Published private(set) var isBuzzing = false
     /// The user tapped "I'm up": no more buzzing this night.
     @Published private(set) var acknowledged = false
-    /// A brief lift of the dim overlay after a tap, so a glance reads at once. Screen brightness never
-    /// changes: the clock stays at minimum all night, buzzing included.
+    /// A tap lifts the readout (brightness up a little, full ink) and it dims again by itself after
+    /// `peekSeconds`; a second tap dims it right away. Buzzing never changes it; only a tap does.
     @Published private(set) var peeking = false
 
     /// UserDefaults keys for the Alarms-screen toggles.
@@ -29,6 +29,8 @@ final class SleepClockController: ObservableObject {
     /// up, or the strap is off the wrist).
     static let buzzIntervalSeconds: TimeInterval = 20
     static let maxBuzzes = 30
+    /// Brightness while the readout is lifted, and how long it stays up before dimming on its own.
+    static let peekBrightness: CGFloat = 0.3
     static let peekSeconds: TimeInterval = 8
     /// Bedtime hours: from 9 PM until 4 AM the Today screen offers the Sleep Clock in place of Start session.
     static let bedtimeStartHour = 21
@@ -124,14 +126,21 @@ final class SleepClockController: ObservableObject {
     }
 
     func peek() {
-        peeking = true
-        peekTimer?.invalidate()
-        peekTimer = Timer.scheduledTimer(withTimeInterval: Self.peekSeconds, repeats: false) { [weak self] _ in
-            Task { @MainActor in
-                guard let self, self.running else { return }
-                self.peeking = false
-            }
+        peekTimer?.invalidate(); peekTimer = nil
+        if peeking {
+            dimNow()
+            return
         }
+        peeking = true
+        UIScreen.main.brightness = Self.peekBrightness
+        peekTimer = Timer.scheduledTimer(withTimeInterval: Self.peekSeconds, repeats: false) { [weak self] _ in
+            Task { @MainActor in self?.dimNow() }
+        }
+    }
+
+    private func dimNow() {
+        peeking = false
+        if running { UIScreen.main.brightness = 0 }
     }
 
     // MARK: Ticking

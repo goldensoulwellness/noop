@@ -5,8 +5,8 @@ import SwiftUI
 /// The bedside Sleep Clock: a near-black page that stays on all night, read with the phone lying on its
 /// side. The time sits in the middle, the sleep battery stands on the right as eight gas-gauge pills that
 /// light from the bottom as sleep is banked against the night's need, and one line says where the night
-/// stands. Once full, the strap buzzes at the next light moment. The screen never brightens: a tap only
-/// lifts the dim overlay for a moment; "I'm up" silences the strap; Exit needs two taps.
+/// stands. Once full, the strap buzzes at the next light moment. A tap toggles between the dim night view
+/// and a brighter readout; "I'm up" silences the strap; Exit needs two taps.
 ///
 /// The iPhone target is portrait-only, so the page draws its landscape layout rotated a quarter turn
 /// rather than asking the app to support landscape for one screen.
@@ -48,41 +48,44 @@ struct SleepClockView: View {
 
     private func landscape(size: CGSize) -> some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
-            VStack(spacing: 0) {
-                HStack(spacing: 0) {
-                    Spacer(minLength: 0)
-                    VStack(spacing: 18) {
-                        Text(Self.clockFormatter.string(from: context.date))
-                            .font(StrandFont.display(min(120, size.height * 0.34)))
-                            .tracking(StrandFont.displayTracking(84))
-                            .foregroundStyle(StrandPalette.nightClockInk)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.5)
-                            .accessibilityLabel(Text("Time \(Self.clockFormatter.string(from: context.date))"))
-                        Text(statusLine(now: context.date))
-                            .font(StrandFont.headline)
-                            .foregroundStyle(StrandPalette.nightClockInk)
-                            .multilineTextAlignment(.center)
-                            .fixedSize(horizontal: false, vertical: true)
-                        if let stage = controller.snapshot?.stage, !controller.isBuzzing {
-                            Text(Self.label(for: stage))
-                                .font(StrandFont.overline)
-                                .tracking(StrandFont.overlineTracking)
-                                .foregroundStyle(StrandPalette.nightClockInk.opacity(0.7))
-                        }
+            ZStack {
+                // The time block is centred on the whole page, both ways; the battery and the
+                // controls are laid over it so they never push the clock off centre.
+                VStack(spacing: 18) {
+                    Text(Self.clockFormatter.string(from: context.date))
+                        .font(StrandFont.display(min(104, size.height * 0.27)))
+                        .tracking(StrandFont.displayTracking(84))
+                        .foregroundStyle(StrandPalette.nightClockInk)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
+                        .accessibilityLabel(Text("Time \(Self.clockFormatter.string(from: context.date))"))
+                    Text(statusLine(now: context.date))
+                        .font(StrandFont.headline)
+                        .foregroundStyle(StrandPalette.nightClockInk)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let stage = controller.snapshot?.stage, !controller.isBuzzing {
+                        Text(Self.label(for: stage))
+                            .font(StrandFont.overline)
+                            .tracking(StrandFont.overlineTracking)
+                            .foregroundStyle(StrandPalette.nightClockInk.opacity(0.7))
                     }
-                    .padding(.horizontal, 24)
-                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 24)
+                .frame(maxWidth: size.width * 0.5)
+                HStack {
+                    Spacer()
                     SleepBatteryGauge(fraction: controller.snapshot?.fraction ?? 0,
                                       settling: controller.snapshot?.asleepSince == nil)
-                        .frame(width: 96, height: size.height * 0.72)
-                        .padding(.trailing, 40)
+                        .frame(width: 82, height: size.height * 0.64)
+                        .padding(.trailing, size.width * 0.08)
                 }
-                .frame(maxHeight: .infinity)
-                controls
-                    .padding(.bottom, 16)
+                VStack {
+                    Spacer()
+                    controls
+                        .padding(.bottom, 14)
+                }
             }
-            .padding(.top, 16)
         }
     }
 
@@ -110,7 +113,6 @@ struct SleepClockView: View {
                     onClose()
                 } else {
                     exitArmedUntil = Date().addingTimeInterval(3)
-                    controller.peek()
                 }
             } label: {
                 Text(armed ? "Tap again to exit" : "Exit")
@@ -161,7 +163,7 @@ struct SleepClockView: View {
     }()
 }
 
-/// The sleep battery as a gas gauge: eight horizontal pills stacked in a vertical cell with a cap, lit
+/// The sleep battery as a gas gauge: eight horizontal pills stacked in a vertical cell, lit
 /// from the bottom as the night fills. Lit pills are red through 74%, amber from 75% to 84% and green from
 /// 85%, in the same muted night inks as the clock so the gauge adds no light to the room.
 struct SleepBatteryGauge: View {
@@ -182,9 +184,6 @@ struct SleepBatteryGauge: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                .fill(StrandPalette.nightClockInk)
-                .frame(width: 34, height: 10)
             VStack(spacing: 8) {
                 ForEach((0..<Self.pillCount).reversed(), id: \.self) { i in
                     Capsule()
