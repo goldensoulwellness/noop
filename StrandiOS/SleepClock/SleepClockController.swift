@@ -45,6 +45,8 @@ final class SleepClockController: ObservableObject {
 
     let startedAt: Date
     let needSeconds: Int
+    /// (baseline, debt, strain) minutes behind `needSeconds`, for the clock's need line.
+    let needBreakdown: (baselineMin: Double, debtMin: Double, strainMin: Double)
     private var tracker: SleepBatteryTracker
     private weak var model: AppModel?
     private var cancellables = Set<AnyCancellable>()
@@ -60,10 +62,19 @@ final class SleepClockController: ObservableObject {
         self.model = model
         let now = Date()
         startedAt = now
-        // The same personal need every debt surface measures against (upper-quartile, age-floored);
-        // 8 h until enough nights exist. `SleepModel.debtNeedMin` returns minutes.
-        let needMin = SleepModel.debtNeedMin(days: model.repo.days)
-        needSeconds = Int((needMin.isFinite && needMin > 0 ? needMin : 480) * 60)
+        // Tonight's need the WHOOP way: the personal baseline every debt surface measures against
+        // (upper-quartile, age-floored; 8 h until enough nights exist) + the sleep debt still owed from
+        // the last 14 nights + extra for today's strain. A short night yesterday makes 100% take longer.
+        let days = model.repo.days
+        let baselineMin = SleepModel.debtNeedMin(days: days)
+        let ledger = SleepModel.debtLedger(days: days, napSleepMinByDay: [:])
+        let today = Repository.logicalDayKey(now)
+        let strain = days.last(where: { $0.day == today })?.strain
+        let needMin = SleepNeedTonight.minutes(baselineMin: baselineMin,
+                                               debtMin: ledger.isDebt ? ledger.magnitudeMin : 0,
+                                               strain: strain)
+        needBreakdown = (baselineMin, ledger.isDebt ? ledger.magnitudeMin : 0, SleepNeedTonight.strainAddMin(strain))
+        needSeconds = Int(needMin * 60)
         tracker = SleepBatteryTracker(needSeconds: needSeconds, startedAt: Int(now.timeIntervalSince1970))
     }
 

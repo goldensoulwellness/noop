@@ -70,6 +70,10 @@ struct SleepClockView: View {
                             .tracking(StrandFont.overlineTracking)
                             .foregroundStyle(StrandPalette.nightClockInk.opacity(0.7))
                     }
+                    Text(needLine)
+                        .font(StrandFont.caption)
+                        .foregroundStyle(StrandPalette.nightClockInk.opacity(0.7))
+                        .multilineTextAlignment(.center)
                 }
                 .padding(.horizontal, 24)
                 .frame(maxWidth: size.width * 0.5)
@@ -140,6 +144,18 @@ struct SleepClockView: View {
         }
         let eta = now.addingTimeInterval(TimeInterval(s.secondsToFull))
         return String(localized: "Asleep \(asleep). Full at about \(Self.clockFormatter.string(from: eta)).")
+    }
+
+    /// "Need 8h 45m tonight · 8h + 30m debt + 15m strain": what 100% means tonight and why.
+    private var needLine: String {
+        let b = controller.needBreakdown
+        var parts = [Self.duration(Int(b.baselineMin * 60))]
+        if b.debtMin >= 1 { parts.append(String(localized: "\(Self.duration(Int(b.debtMin * 60))) debt")) }
+        if b.strainMin >= 1 { parts.append(String(localized: "\(Self.duration(Int(b.strainMin * 60))) strain")) }
+        let total = Self.duration(controller.needSeconds)
+        return parts.count == 1
+            ? String(localized: "Need \(total) tonight")
+            : String(localized: "Need \(total) tonight · \(parts.joined(separator: " + "))")
     }
 
     private static func duration(_ seconds: Int) -> String {
