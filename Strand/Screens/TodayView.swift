@@ -438,6 +438,7 @@ struct TodayView: View {
     @State private var showLiveSession = false
     #if os(iOS)
     @State private var showSleepClock = false
+    @State private var showNap = false
     #endif
     /// The Updates inbox sheet (opened by the header bell). Shared across both platforms.
     /// #1862: the optional Coach launcher sheet, opened from the default-OFF Coach dashboard card.
@@ -1663,6 +1664,10 @@ struct TodayView: View {
         .fullScreenCover(isPresented: $showSleepClock) {
             SleepClockCover(onClose: { showSleepClock = false })
         }
+        .sheet(isPresented: $showNap) {
+            NapView(days: repo.days)
+                .noopSheetPresentation(largeFirst: true)
+        }
         #else
         .sheet(isPresented: $showLiveSession) {
             LiveSessionView(onClose: { showLiveSession = false })
@@ -1955,8 +1960,11 @@ struct TodayView: View {
             TimelineView(.periodic(from: .now, by: 60)) { context in
                 if SleepClockController.isBedtime(context.date) {
                     sleepClockStartSection
-                } else if liveSessionsBeta {
-                    liveSessionStartSection
+                } else {
+                    VStack(spacing: NoopMetrics.gap) {
+                        if liveSessionsBeta { liveSessionStartSection }
+                        napStartSection
+                    }
                 }
             }
             #else
@@ -2055,6 +2063,35 @@ struct TodayView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Start Sleep Clock. Dim sideways clock that fills your sleep battery overnight.")
+    }
+
+    /// Daytime companion to Start session: opens the Nap screen, with the sleep debt owed as its subtitle.
+    private var napStartSection: some View {
+        Button { showNap = true } label: {
+            NoopCard(tint: StrandPalette.restColor) {
+                HStack(spacing: NoopMetrics.space3) {
+                    Image(systemName: "moon.zzz.fill")
+                        .font(StrandFont.headline)
+                        .foregroundStyle(StrandPalette.restColor)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: NoopMetrics.space1) {
+                        Text("Take a nap")
+                            .font(StrandFont.headline)
+                            .foregroundStyle(StrandPalette.textPrimary)
+                        Text(NapView.debtLine(days: repo.days))
+                            .font(StrandFont.caption)
+                            .foregroundStyle(StrandPalette.textSecondary)
+                    }
+                    Spacer(minLength: NoopMetrics.space2)
+                    Image(systemName: "chevron.right")
+                        .font(StrandFont.caption.weight(.semibold))
+                        .foregroundStyle(StrandPalette.textTertiary)
+                        .accessibilityHidden(true)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Take a nap. \(NapView.debtLine(days: repo.days))")
     }
     #endif
 

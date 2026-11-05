@@ -17,10 +17,12 @@ struct SleepClockView: View {
 
     @State private var exitArmedUntil: Date? = nil
 
-    init(model: AppModel, onClose: @escaping () -> Void) {
-        _controller = StateObject(wrappedValue: SleepClockController(model: model))
+    init(model: AppModel, nap: SleepClockController.NapPlan? = nil, onClose: @escaping () -> Void) {
+        _controller = StateObject(wrappedValue: SleepClockController(model: model, nap: nap))
         self.onClose = onClose
     }
+
+    private var isNap: Bool { controller.nap != nil }
 
     var body: some View {
         GeometryReader { geo in
@@ -132,10 +134,20 @@ struct SleepClockView: View {
 
     private func statusLine(now: Date) -> String {
         guard let s = controller.snapshot else { return String(localized: "Starting…") }
-        if controller.isBuzzing { return String(localized: "100% Sleep! Let's go!") }
+        if controller.isBuzzing {
+            return isNap ? String(localized: "Nap done! Let's go!") : String(localized: "100% Sleep! Let's go!")
+        }
         if s.noSignal { return String(localized: "No signal from the strap") }
         guard s.asleepSince != nil else { return String(localized: "Settling in…") }
         let asleep = Self.duration(s.sleepSeconds)
+        if isNap {
+            if s.fraction >= 1 {
+                if controller.acknowledged || !controller.buzzAtFull { return String(localized: "Napped \(asleep). Goal reached.") }
+                return String(localized: "Napped \(asleep). Goal reached — waiting for a light moment.")
+            }
+            let eta = now.addingTimeInterval(TimeInterval(s.secondsToFull))
+            return String(localized: "Napping \(asleep). Done at about \(Self.clockFormatter.string(from: eta)).")
+        }
         if s.fraction >= 1 {
             if controller.acknowledged { return String(localized: "Asleep \(asleep). Battery full.") }
             return controller.buzzAtFull
@@ -148,6 +160,13 @@ struct SleepClockView: View {
 
     /// "Need 8h 45m tonight · 8h + 30m debt + 15m strain": what 100% means tonight and why.
     private var needLine: String {
+        if let nap = controller.nap {
+            let goal = Self.duration(nap.targetSeconds)
+            let clears = min(Double(nap.targetSeconds) / 60, nap.debtMin)
+            return clears >= 1
+                ? String(localized: "Nap goal \(goal) · clears \(Self.duration(Int(clears * 60))) of sleep debt")
+                : String(localized: "Nap goal \(goal)")
+        }
         let b = controller.needBreakdown
         var parts = [Self.duration(Int(b.baselineMin * 60))]
         if b.debtMin >= 1 { parts.append(String(localized: "\(Self.duration(Int(b.debtMin * 60))) debt")) }

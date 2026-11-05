@@ -43,6 +43,7 @@ struct SmartAlarmView: View {
     /// Sleep Clock: whether the strap buzzes once the sleep battery is full (default on — it is the point).
     @AppStorage(SleepClockController.buzzAtFullKey) private var sleepClockBuzzAtFull = true
     @State private var showSleepClock = false
+    @State private var showNap = false
     #endif
     /// Calendar weekday numbers laid out Monday-first (Mon…Sun → 2,3,4,5,6,7,1), matching AutomationsView.
     private static let weekdayOrder = [2, 3, 4, 5, 6, 7, 1]
@@ -56,6 +57,7 @@ struct SmartAlarmView: View {
                 windowHero
                 #if os(iOS)
                 sleepClockCard
+                napCard
                 #endif
                 strapAlarmCard
                 strapRejectedCard   // #34: only shows when the strap keeps refusing the alarm
@@ -265,6 +267,39 @@ struct SmartAlarmView: View {
         }
         .fullScreenCover(isPresented: $showSleepClock) {
             SleepClockView(model: model, onClose: { showSleepClock = false })
+        }
+    }
+
+    /// Daytime twin of the Sleep Clock: the Nap screen, reachable here at any hour (the home row only
+    /// shows it by day).
+    private var napCard: some View {
+        NoopCard(tint: StrandPalette.restColor) {
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Daytime").strandOverline()
+                    HStack(spacing: 10) {
+                        Image(systemName: "moon.zzz.fill")
+                            .foregroundStyle(StrandPalette.restColor)
+                            .accessibilityHidden(true)
+                        Text("Nap")
+                            .font(StrandFont.title2)
+                            .foregroundStyle(StrandPalette.textPrimary)
+                    }
+                }
+                Text("See the sleep debt you can clear, pick a nap goal, and let the strap buzz you at a light moment once you've had enough.")
+                    .font(StrandFont.footnote)
+                    .foregroundStyle(StrandPalette.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button { showNap = true } label: {
+                    Label("Open Nap", systemImage: "cloud.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(NoopButtonStyle(.secondary, fullWidth: true))
+            }
+        }
+        .sheet(isPresented: $showNap) {
+            NapView(days: model.repo.days)
+                .noopSheetPresentation(largeFirst: true)
         }
     }
     #endif

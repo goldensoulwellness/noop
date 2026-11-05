@@ -100,6 +100,7 @@ struct LiquidTodayView: View {
     @State private var showLiveSession = false
     #if os(iOS)
     @State private var showSleepClock = false
+    @State private var showNap = false
     #endif
 
     /// Live Sessions (silent guardian) beta gate — the SAME key the Settings toggle writes. Default ON
@@ -379,8 +380,11 @@ struct LiquidTodayView: View {
                             TimelineView(.periodic(from: .now, by: 60)) { context in
                                 if SleepClockController.isBedtime(context.date) {
                                     sleepClockStartRow
-                                } else if liveSessionsBeta {
-                                    liveSessionStartRow
+                                } else {
+                                    VStack(spacing: 10) {
+                                        if liveSessionsBeta { liveSessionStartRow }
+                                        napStartRow
+                                    }
                                 }
                             }
                             #else
@@ -516,6 +520,10 @@ struct LiquidTodayView: View {
         #if os(iOS)
         .fullScreenCover(isPresented: $showSleepClock) {
             SleepClockCover(onClose: { showSleepClock = false })
+        }
+        .sheet(isPresented: $showNap) {
+            NapView(days: repo.days)
+                .noopSheetPresentation(largeFirst: true)
         }
         #endif
         #if os(macOS)
@@ -740,6 +748,34 @@ struct LiquidTodayView: View {
         }
         .buttonStyle(LiquidPressStyle())
         .accessibilityLabel("Start Sleep Clock. Dim sideways clock that fills your sleep battery overnight.")
+    }
+
+    /// Daytime companion to Start session: a quiet row that opens the Nap screen, with the one line
+    /// that says whether a nap would pay off (the sleep debt owed).
+    private var napStartRow: some View {
+        Button { showNap = true } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "moon.zzz.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(StrandPalette.restColor)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Take a nap")
+                        .font(StrandFont.subhead)
+                        .foregroundStyle(StrandPalette.textPrimary)
+                    Text(NapView.debtLine(days: repo.days))
+                        .font(StrandFont.caption)
+                        .foregroundStyle(StrandPalette.textSecondary)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(StrandPalette.textTertiary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            .background(NoopPanelSurface(cornerRadius: 18, surfaceOpacity: cardOpacity))
+        }
+        .buttonStyle(LiquidPressStyle())
+        .accessibilityLabel("Take a nap. \(NapView.debtLine(days: repo.days))")
     }
     #endif
 

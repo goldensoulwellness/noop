@@ -25,6 +25,7 @@ final class SleepClockController: ObservableObject {
 
     /// Once full, wait at most this long for a light moment before buzzing anyway.
     static let graceSeconds = 30 * 60
+    static let napGraceSeconds = 10 * 60
     /// Buzz cadence and cap: a strap buzz every 20 s for up to 10 minutes, then stop (the user is either
     /// up, or the strap is off the wrist).
     static let buzzIntervalSeconds: TimeInterval = 20
@@ -58,10 +59,28 @@ final class SleepClockController: ObservableObject {
     private var savedBrightness: CGFloat = UIScreen.main.brightness
     private var running = false
 
-    init(model: AppModel) {
+    /// A daytime nap: how much sleep to bank before the strap buzzes, and the debt it is clearing.
+    struct NapPlan: Equatable {
+        let targetSeconds: Int
+        let debtMin: Double
+    }
+    let nap: NapPlan?
+    /// Once full, wait at most this long for a light moment before buzzing anyway (shorter for naps).
+    let grace: Int
+
+    init(model: AppModel, nap: NapPlan? = nil) {
         self.model = model
+        self.nap = nap
         let now = Date()
         startedAt = now
+        if let nap {
+            grace = Self.napGraceSeconds
+            needBreakdown = (Double(nap.targetSeconds) / 60, 0, 0)
+            needSeconds = max(60, nap.targetSeconds)
+            tracker = SleepBatteryTracker(needSeconds: needSeconds, startedAt: Int(now.timeIntervalSince1970))
+            return
+        }
+        grace = Self.graceSeconds
         // Tonight's need the WHOOP way: the personal baseline every debt surface measures against
         // (upper-quartile, age-floored; 8 h until enough nights exist) + the sleep debt still owed from
         // the last 14 nights + extra for today's strain. A short night yesterday makes 100% take longer.
@@ -164,7 +183,7 @@ final class SleepClockController: ObservableObject {
         let snap = tracker.snapshot(at: now)
         snapshot = snap
         guard buzzAtFull, !acknowledged, !isBuzzing, snap.fraction >= 1, let fullAt = snap.fullAt else { return }
-        if snap.goodWakeMoment || now - fullAt >= Self.graceSeconds {
+        if snap.goodWakeMoment || now - fullAt >= grace {
             startBuzzing()
         }
     }
