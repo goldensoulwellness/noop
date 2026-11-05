@@ -286,7 +286,7 @@ struct SmartAlarmView: View {
                             .foregroundStyle(StrandPalette.textPrimary)
                     }
                 }
-                Text("See the sleep debt you can clear, pick a nap goal, and let the strap buzz you at a light moment once you've had enough.")
+                Text("See the sleep debt you can clear, pick a nap goal, and let the strap buzz you the moment you've had enough.")
                     .font(StrandFont.footnote)
                     .foregroundStyle(StrandPalette.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)

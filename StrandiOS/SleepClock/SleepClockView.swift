@@ -141,10 +141,7 @@ struct SleepClockView: View {
         guard s.asleepSince != nil else { return String(localized: "Settling in…") }
         let asleep = Self.duration(s.sleepSeconds)
         if isNap {
-            if s.fraction >= 1 {
-                if controller.acknowledged || !controller.buzzAtFull { return String(localized: "Napped \(asleep). Goal reached.") }
-                return String(localized: "Napped \(asleep). Goal reached — waiting for a light moment.")
-            }
+            if s.fraction >= 1 { return String(localized: "Napped \(asleep). Goal reached.") }
             let eta = now.addingTimeInterval(TimeInterval(s.secondsToFull))
             return String(localized: "Napping \(asleep). Done at about \(Self.clockFormatter.string(from: eta)).")
         }

@@ -25,7 +25,9 @@ final class SleepClockController: ObservableObject {
 
     /// Once full, wait at most this long for a light moment before buzzing anyway.
     static let graceSeconds = 30 * 60
-    static let napGraceSeconds = 10 * 60
+    /// A nap buzzes the moment the goal is banked: a light-moment wait could add 15–30 minutes to a
+    /// 20-minute nap, which defeats it.
+    static let napGraceSeconds = 0
     /// Buzz cadence and cap: a strap buzz every 20 s for up to 10 minutes, then stop (the user is either
     /// up, or the strap is off the wrist).
     static let buzzIntervalSeconds: TimeInterval = 20
@@ -183,7 +185,7 @@ final class SleepClockController: ObservableObject {
         let snap = tracker.snapshot(at: now)
         snapshot = snap
         guard buzzAtFull, !acknowledged, !isBuzzing, snap.fraction >= 1, let fullAt = snap.fullAt else { return }
-        if snap.goodWakeMoment || now - fullAt >= grace {
+        if nap != nil || snap.goodWakeMoment || now - fullAt >= grace {
             startBuzzing()
         }
     }

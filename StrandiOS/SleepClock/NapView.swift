@@ -5,12 +5,12 @@ import SwiftUI
 
 /// The Nap screen: how much sleep debt is owed, how much of it a nap can clear, a goal to pick, and one
 /// Start button that opens the dark clock in nap mode. The clock banks sleep against the goal and buzzes
-/// the strap at the next light moment once it is reached (ten-minute grace), so a nap ends on time
-/// without an alarm clock.
+/// the strap the moment it is reached (no light-moment wait: that could stretch a 20-minute nap to 30+),
+/// so a nap ends on time without an alarm clock.
 ///
 /// Napping facts that shape the defaults: 20 minutes refreshes without grogginess, 90 minutes is one full
-/// sleep cycle, and anything between risks waking in deep sleep — which is exactly what the light-moment
-/// buzz is for. Naps after mid-afternoon eat into the night, so the screen says so after 3 PM.
+/// sleep cycle, and anything between risks waking in deep sleep, so the copy says so. Naps after
+/// mid-afternoon eat into the night, so the screen says so after 3 PM.
 struct NapView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
@@ -63,7 +63,7 @@ struct NapView: View {
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(NoopButtonStyle(.primary, fullWidth: true))
-                        .accessibilityHint(Text("Opens the dark nap clock; the strap buzzes when the goal is reached"))
+                        .accessibilityHint(Text("Opens the dark nap clock; the strap buzzes the moment the goal is reached"))
                         Text("Lay the phone on its side, top to the left. Tap the screen to read it; it dims again by itself.")
                             .font(StrandFont.footnote)
                             .foregroundStyle(StrandPalette.textTertiary)
@@ -188,15 +188,15 @@ struct NapView: View {
             ? String(localized: "One full sleep cycle that clears \(Self.duration(Int(clears))) of debt. The best nap for real catch-up.")
             : String(localized: "One full sleep cycle. The best nap for deep rest.")
         default: return clears >= 1
-            ? String(localized: "Clears \(Self.duration(Int(clears))) of debt. The buzz waits for a light moment so you don't wake mid-deep-sleep.")
-            : String(localized: "The buzz waits for a light moment so you don't wake mid-deep-sleep.")
+            ? String(localized: "Clears \(Self.duration(Int(clears))) of debt. You may land in deep sleep at this length, so give yourself a minute to come round.")
+            : String(localized: "You may land in deep sleep at this length, so give yourself a minute to come round.")
         }
     }
 
-    /// Settling in (about 10 min) + the goal + the light-moment wait (up to 10 min).
+    /// Falling asleep (about 10 min) + the goal. The buzz comes the moment the goal is banked.
     private var buzzByLine: String {
-        let latest = Date().addingTimeInterval(TimeInterval((10 + goalMinutes + 10) * 60))
-        return String(localized: "Buzz by about \(Self.timeFormatter.string(from: latest)) at the latest.")
+        let latest = Date().addingTimeInterval(TimeInterval((10 + goalMinutes) * 60))
+        return String(localized: "Buzzes the moment you've banked \(Self.duration(goalMinutes)) of sleep — about \(Self.timeFormatter.string(from: latest)) if you drop off in 10 minutes.")
     }
 
     private static func duration(_ minutes: Int) -> String {
