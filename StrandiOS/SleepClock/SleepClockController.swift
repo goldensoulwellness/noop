@@ -130,7 +130,10 @@ final class SleepClockController: ObservableObject {
     // MARK: Ticking
 
     private func tick() {
-        let now = Int(Date().timeIntervalSince1970)
+        var now = Int(Date().timeIntervalSince1970)
+        #if DEBUG
+        if let demoNow = demoStep() { now = demoNow }
+        #endif
         let snap = tracker.snapshot(at: now)
         snapshot = snap
         guard buzzAtFull, !acknowledged, !isBuzzing, snap.fraction >= 1, let fullAt = snap.fullAt else { return }
@@ -158,6 +161,40 @@ final class SleepClockController: ObservableObject {
         buzzTimer?.invalidate(); buzzTimer = nil
         isBuzzing = false
     }
+
+    #if DEBUG
+    // MARK: Demo night (debug builds only)
+
+    /// Screenshot aid: `defaults write <bundle> sleepClock.demoStepMinutes -float 60` plays a synthetic
+    /// night through the tracker, banking that many minutes of sleep per tick (cycling deep / light / REM
+    /// heart rates), so the gauge can be captured filling without a strap. Returns the synthetic "now".
+    private var demoCursor: Int?
+    private func demoStep() -> Int? {
+        let step = Int(UserDefaults.standard.double(forKey: "sleepClock.demoStepMinutes"))
+        guard step > 0 else { return nil }
+        if demoCursor == nil {
+            demoFeed(from: tracker.startedAt, minutes: 10, bpm: 72, jitter: 2, rrSpread: 10)
+            demoCursor = tracker.startedAt + 600
+        }
+        guard let cursor = demoCursor else { return nil }
+        let hour = (cursor - tracker.startedAt) / 3_600
+        let profile: [(bpm: Int, jitter: Int, rr: Int)] = [(55, 0, 60), (59, 1, 20), (63, 4, 10), (57, 1, 20)]
+        let p = profile[hour % profile.count]
+        demoFeed(from: cursor, minutes: step, bpm: p.bpm, jitter: p.jitter, rrSpread: p.rr)
+        demoCursor = cursor + step * 60
+        return demoCursor
+    }
+
+    private func demoFeed(from: Int, minutes: Int, bpm: Int, jitter: Int, rrSpread: Int) {
+        for s in 0..<(minutes * 60) {
+            let ts = from + s
+            let wobble = jitter == 0 ? 0 : ((s * 7) % (2 * jitter + 1)) - jitter
+            tracker.add(hr: bpm + wobble, at: ts)
+            let base = 60_000 / max(1, bpm + wobble)
+            tracker.add(rrMs: [base + (s % 2 == 0 ? rrSpread : -rrSpread)], at: ts)
+        }
+    }
+    #endif
 
     // MARK: Re-anchoring on the real stager
 
