@@ -18,9 +18,8 @@ struct NapView: View {
     @State private var goalMinutes: Int
     @State private var showClock = false
 
-    /// Slider stops: 10…90 in 5-minute steps. The labelled landmarks are the nap lengths worth knowing.
-    static let goalOptions = Array(stride(from: 10, through: 90, by: 5))
-    static let landmarks = [10, 20, 30, 45, 60, 90]
+    /// The nap lengths worth knowing: micro, power, the risky middle, one full cycle.
+    static let goalOptions = [10, 20, 30, 45, 60, 90]
     static let lateNapHour = 15
 
     private let debtMin: Double
@@ -37,15 +36,15 @@ struct NapView: View {
         _goalMinutes = State(initialValue: Self.recommendedGoal(debtMin: debt))
     }
 
-    /// Debt under ten minutes: a 20-minute refresher. Otherwise the exact debt (its own stop on the
-    /// slider), capped at one full 90-minute cycle.
+    /// Debt under ten minutes: a 20-minute refresher. Otherwise the exact debt (its own pill when it
+    /// is not already a preset), capped at one full 90-minute cycle.
     static func recommendedGoal(debtMin: Double) -> Int {
         guard debtMin >= 10 else { return 20 }
         return min(90, Int(debtMin.rounded()))
     }
 
-    /// The 5-minute stops plus, when the debt lands between them, a stop for the exact debt — so 23
-    /// minutes owed offers a 23-minute nap instead of rounding to 25.
+    /// The presets plus, when the debt lands between them, a pill for the exact debt — so 23 minutes
+    /// owed offers a 23-minute nap instead of rounding up to 30.
     static func options(debtMin: Double) -> [Int] {
         let exact = Int(debtMin.rounded())
         guard debtMin >= 10, exact < 90, !goalOptions.contains(exact) else { return goalOptions }
@@ -159,10 +158,10 @@ struct NapView: View {
         NoopCard {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Nap goal").strandOverline()
-                CloudSlider(stops: Self.options(debtMin: debtMin),
-                            landmarks: Self.landmarks,
-                            special: debtMin >= 10 && debtMin < 90 ? Int(debtMin.rounded()) : nil,
-                            selection: $goalMinutes)
+                SegmentedPillControl(Self.options(debtMin: debtMin), selection: $goalMinutes,
+                                     adaptsToAvailableWidth: true, fillsAvailableWidth: true) { m in
+                    Self.pillLabel(m)
+                }
                 if debtMin >= 10, debtMin < 90 {
                     Text("★ \(Self.duration(Int(debtMin.rounded()))) is your exact debt.")
                         .font(StrandFont.footnote)
@@ -218,6 +217,9 @@ struct NapView: View {
         return String(localized: "Buzzes the moment you've banked \(Self.duration(goalMinutes)) of sleep — about \(Self.timeFormatter.string(from: latest)) if you drop off in 10 minutes.")
     }
 
+    /// Pill text kept to three characters so seven pills fit a phone: "90m", not "1h 30m".
+    static func pillLabel(_ m: Int) -> String { "\(m)m" }
+
     private static func duration(_ minutes: Int) -> String {
         let h = minutes / 60, m = minutes % 60
         return h > 0 ? (m > 0 ? "\(h)h \(m)m" : "\(h)h") : "\(m)m"
@@ -228,128 +230,4 @@ struct NapView: View {
         f.setLocalizedDateFormatFromTemplate("jmm")
         return f
     }()
-}
-
-/// The nap-goal slider: a soft track with the nap lengths worth knowing marked underneath, and a little
-/// cloud for a thumb that carries the chosen minutes. Drag or tap anywhere on the track; it snaps to the
-/// nearest stop (5-minute steps, plus a starred stop for the exact sleep debt).
-struct CloudSlider: View {
-    let stops: [Int]
-    let landmarks: [Int]
-    /// A stop to mark with a star (the exact debt), if any.
-    let special: Int?
-    @Binding var selection: Int
-
-    private static let cloudWidth: CGFloat = 76
-    private static let cloudHeight: CGFloat = 54
-    private static let trackY: CGFloat = 60
-    private static let cloudY: CGFloat = 24
-    private static let height: CGFloat = 84
-    /// Short naps get half the track: 10–30 min is where the choice is fine-grained, 30–90 is coarse.
-    private static let bendAt = 30.0
-
-    private var lo: Double { Double(stops.first ?? 10) }
-    private var hi: Double { Double(stops.last ?? 90) }
-
-    var body: some View {
-        GeometryReader { geo in
-            let inset = Self.cloudWidth / 2
-            let usable = max(1, geo.size.width - inset * 2)
-            let x = inset + usable * fraction(of: Double(selection))
-            ZStack(alignment: .topLeading) {
-                // Track, with the filled part up to the cloud.
-                Capsule()
-                    .fill(StrandPalette.restColor.opacity(0.18))
-                    .frame(width: usable + 8, height: 10)
-                    .position(x: inset + usable / 2, y: Self.trackY)
-                Capsule()
-                    .fill(LinearGradient(colors: [StrandPalette.restColor.opacity(0.45), StrandPalette.restColor],
-                                         startPoint: .leading, endPoint: .trailing))
-                    .frame(width: max(10, x - inset + 4), height: 10)
-                    .position(x: inset - 4 + max(10, x - inset + 4) / 2, y: Self.trackY)
-                // Landmark ticks + labels.
-                ForEach(landmarks, id: \.self) { m in
-                    let tx = inset + usable * fraction(of: Double(m))
-                    Circle()
-                        .fill(m <= selection ? Color.white : StrandPalette.restColor.opacity(0.5))
-                        .frame(width: 5, height: 5)
-                        .position(x: tx, y: Self.trackY)
-                    Text(Self.label(m))
-                        .font(StrandFont.caption)
-                        .foregroundStyle(m == selection ? StrandPalette.textPrimary : StrandPalette.textTertiary)
-                        .fixedSize()
-                        .position(x: tx, y: Self.trackY + 18)
-                }
-                // The star for the exact debt, just under the track.
-                if let special, !landmarks.contains(special) {
-                    let sx = inset + usable * fraction(of: Double(special))
-                    Image(systemName: "star.fill")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(StrandPalette.statusWarning)
-                        .position(x: sx, y: Self.trackY + 18)
-                }
-                // The cloud, floating above the track with a little stem down to it.
-                Rectangle()
-                    .fill(StrandPalette.restColor.opacity(0.35))
-                    .frame(width: 2, height: Self.trackY - Self.cloudY - 10)
-                    .position(x: x, y: (Self.trackY + Self.cloudY) / 2 - 2)
-                ZStack {
-                    Image(systemName: "cloud.fill")
-                        .font(.system(size: 66, weight: .regular))
-                        .foregroundStyle(Color.white)
-                        .shadow(color: StrandPalette.restColor.opacity(0.35), radius: 8, y: 4)
-                    Text(Self.label(selection))
-                        .font(StrandFont.rounded(16, weight: .bold))
-                        .foregroundStyle(StrandPalette.restColor)
-                        .offset(y: 4)
-                }
-                .frame(width: Self.cloudWidth, height: Self.cloudHeight)
-                .position(x: x, y: Self.cloudY)
-            }
-            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: selection)
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { g in
-                        let f = Double(min(1, max(0, (g.location.x - inset) / usable)))
-                        let value = minutes(at: f)
-                        let nearest = stops.min { abs(Double($0) - value) < abs(Double($1) - value) } ?? selection
-                        if nearest != selection {
-                            selection = nearest
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        }
-                    }
-            )
-        }
-        .frame(height: Self.height)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text("Nap goal"))
-        .accessibilityValue(Text(Self.label(selection)))
-        .accessibilityAdjustableAction { direction in
-            guard let i = stops.firstIndex(of: selection) else { return }
-            switch direction {
-            case .increment: if i + 1 < stops.count { selection = stops[i + 1] }
-            case .decrement: if i > 0 { selection = stops[i - 1] }
-            @unknown default: break
-            }
-        }
-    }
-
-    /// Minutes → 0…1 along the track, bent at `bendAt` so the short end is not cramped.
-    private func fraction(of value: Double) -> CGFloat {
-        let bend = min(max(Self.bendAt, lo), hi)
-        if value <= bend {
-            return CGFloat(0.5 * (value - lo) / max(1, bend - lo))
-        }
-        return CGFloat(0.5 + 0.5 * (value - bend) / max(1, hi - bend))
-    }
-
-    private func minutes(at f: Double) -> Double {
-        let bend = min(max(Self.bendAt, lo), hi)
-        return f <= 0.5 ? lo + (bend - lo) * (f / 0.5) : bend + (hi - bend) * ((f - 0.5) / 0.5)
-    }
-
-    static func label(_ m: Int) -> String {
-        m >= 60 ? "\(m / 60)h\(m % 60 == 0 ? "" : " \(m % 60)m")" : "\(m)m"
-    }
 }
