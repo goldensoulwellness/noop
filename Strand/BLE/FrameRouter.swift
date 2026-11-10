@@ -450,6 +450,9 @@ public final class FrameRouter {
                 // users. Every other event (wrist, double-tap, battery, bonded…) still shows.
                 if !ev.hasPrefix("BLE_REALTIME_HR") {
                     state.lastEvent = ev
+                    // One line per strap event so "my double-tap did nothing" can be told apart from
+                    // "the strap never sent one". Events are rare (gestures, wrist, battery), so cheap.
+                    state.append(log: AppModel.stamped("Event: \(ev)"))
                 }
                 // A double-tap is handed on BEFORE the sync kick below, because what it triggers is
                 // usually a buzz that says "that registered", and a write that follows the sync
