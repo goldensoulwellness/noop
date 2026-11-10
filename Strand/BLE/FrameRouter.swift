@@ -450,6 +450,7 @@ public final class FrameRouter {
                 // users. Every other event (wrist, double-tap, battery, bonded…) still shows.
                 if !ev.hasPrefix("BLE_REALTIME_HR") {
                     state.lastEvent = ev
+                    state.lastEventAt = Date()
                     // One line per strap event so "my double-tap did nothing" can be told apart from
                     // "the strap never sent one". Events are rare (gestures, wrist, battery), so cheap.
                     state.append(log: AppModel.stamped("Event: \(ev)"))

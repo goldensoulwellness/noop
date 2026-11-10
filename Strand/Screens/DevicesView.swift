@@ -146,6 +146,7 @@ private struct DevicesContent: View {
             // as LiveView's banner; no new copy.
             if let guide = live.reconnectGuide { repairGuideBanner(guide) }
             DeviceSyncStatusCard()
+            LastStrapSignalCard()
                 // #1300 tier 2: compute the two-strap comparison off the giant body-modifier chain (attaching
                 // .task to the whole `body` tips the iOS type-check budget on this already-heavy view).
                 .task(id: activeDevices.count) { await loadStrapCompare() }
@@ -636,6 +637,48 @@ private struct DevicesContent: View {
 }
 
 // MARK: - Strap-history sync card
+
+/// The last thing the strap told the phone (a tap, wrist on/off, battery…) and when, so a gesture can be
+/// checked on the phone itself: double-tap, glance here, see "DOUBLE_TAP · 12:03:11" or not.
+private struct LastStrapSignalCard: View {
+    @EnvironmentObject private var live: LiveState
+
+    private static let time: DateFormatter = {
+        let f = DateFormatter(); f.setLocalizedDateFormatFromTemplate("jmmss"); return f
+    }()
+
+    var body: some View {
+        NoopCard(tint: StrandPalette.textSecondary) {
+            HStack(alignment: .center, spacing: NoopMetrics.space3) {
+                Image(systemName: "hand.tap.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(StrandPalette.textSecondary)
+                    .frame(width: 24)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: NoopMetrics.space1) {
+                    Text("Last strap signal")
+                        .font(StrandFont.headline)
+                        .foregroundStyle(StrandPalette.textPrimary)
+                    Text(detail)
+                        .font(StrandFont.subhead)
+                        .foregroundStyle(StrandPalette.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private var detail: String {
+        guard let ev = live.lastEvent else {
+            return String(localized: "Nothing yet this session. A double-tap or taking the strap off should show up here.")
+        }
+        let name = ev.split(separator: "(").first.map(String.init) ?? ev
+        if let at = live.lastEventAt { return "\(name) · \(Self.time.string(from: at))" }
+        return name
+    }
+}
 
 /// The sync status formerly shown as a compact control in the Today header. Devices is the natural home
 /// for this device-level state, and the full card gives the status enough room to read without crowding

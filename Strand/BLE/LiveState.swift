@@ -340,6 +340,9 @@ public final class LiveState: ObservableObject {
 
     @Published public var lastFrameType: String? = nil
     @Published public var lastEvent: String? = nil
+    /// Wall-clock moment `lastEvent` was set, so a screen can say "DOUBLE_TAP · 12:03:11" and a user
+    /// testing a gesture can tell a fresh signal from an old one.
+    @Published public var lastEventAt: Date? = nil
     /// #987: unix of the most recent strap frame FrameRouter routed. Deliberately NOT @Published - the
     /// raw flood arrives per-notification and a published write per frame would re-render every observer
     /// at frame rate (the exact churn the lastFrameType change-guard exists to avoid). The Test Centre
