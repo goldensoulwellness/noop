@@ -139,6 +139,12 @@ struct AutomationsView: View {
                 if behavior.doubleTapAction == .runShortcut {
                     shortcutField(String(localized: "Shortcut name"), text: $behavior.doubleTapShortcut)
                 }
+                if behavior.doubleTapAction == .pingPhone {
+                    Text("Plays a loud chime on your \(Platform.deviceNoun), even on silent. Skipped around alarm time and while the Sleep Clock is buzzing, when a double tap means \"I'm up\".")
+                        .font(StrandFont.footnote)
+                        .foregroundStyle(StrandPalette.textTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 HStack {
                     Button {
                         model.runMacAction(behavior.doubleTapAction, shortcut: behavior.doubleTapShortcut)

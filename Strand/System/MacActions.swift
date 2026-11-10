@@ -6,6 +6,7 @@ import AppKit
 /// What a strap double-tap (or a wrist-off trigger) does on the Mac.
 enum MacActionKind: String, Codable, CaseIterable, Identifiable {
     case none
+    case pingPhone
     case lockScreen
     case buzzBack
     case markMoment
@@ -17,6 +18,7 @@ enum MacActionKind: String, Codable, CaseIterable, Identifiable {
     var label: String {
         switch self {
         case .none:        return String(localized: "Nothing")
+        case .pingPhone:   return String(localized: "Ping \(Platform.deviceNounPhrase)")
         case .lockScreen:  return String(localized: "Lock \(Platform.deviceNounPhrase)")
         case .buzzBack:    return String(localized: "Buzz back (confirm)")
         case .markMoment:  return String(localized: "Mark a moment")
@@ -28,6 +30,7 @@ enum MacActionKind: String, Codable, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .none:        return "circle.slash"
+        case .pingPhone:   return "iphone.radiowaves.left.and.right"
         case .lockScreen:  return "lock.fill"
         case .buzzBack:    return "waveform.path"
         case .markMoment:  return "mappin.and.ellipse"

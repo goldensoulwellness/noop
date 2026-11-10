@@ -193,6 +193,11 @@ final class SleepClockController: ObservableObject {
     private func startBuzzing() {
         isBuzzing = true
         buzzCount = 0
+        // While the strap is buzzing, a double tap on it means "I'm up" — the same gesture that
+        // silences the strap's own alarm — and must not fall through to the user's double-tap action
+        // (which, on iPhone, would ping the phone across the bedroom).
+        model?.strapDoubleTapOverride = { [weak self] in self?.acknowledgeWake() }
+        claimedStrapTap = true
         buzzOnce()
         buzzTimer = Timer.scheduledTimer(withTimeInterval: Self.buzzIntervalSeconds, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.buzzOnce() }
@@ -208,7 +213,13 @@ final class SleepClockController: ObservableObject {
     private func stopBuzzing() {
         buzzTimer?.invalidate(); buzzTimer = nil
         isBuzzing = false
+        if claimedStrapTap {
+            model?.strapDoubleTapOverride = nil
+            claimedStrapTap = false
+        }
     }
+
+    private var claimedStrapTap = false
 
     #if DEBUG
     // MARK: Demo night (debug builds only)

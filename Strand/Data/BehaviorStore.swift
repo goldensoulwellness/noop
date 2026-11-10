@@ -60,6 +60,7 @@ final class BehaviorStore: ObservableObject {
     private let d = UserDefaults.standard
     private enum K {
         static let dtAction = "behavior.doubleTapAction"
+        static let dtPingDefaulted = "behavior.doubleTapPingDefaulted"
         static let dtShortcut = "behavior.doubleTapShortcut"
         static let autoLock = "behavior.autoLockOnWristOff"
         static let wristOffShortcut = "behavior.wristOffShortcut"
@@ -83,7 +84,20 @@ final class BehaviorStore: ObservableObject {
     }
 
     init() {
+        #if os(iOS)
+        // iPhone default: a double tap pings the phone. Applied once to installs that never chose
+        // anything (or still had "Nothing" from before the ping existed); a later "Nothing" sticks.
+        let storedAction = d.string(forKey: K.dtAction)
+        if storedAction == nil || (storedAction == MacActionKind.none.rawValue && !d.bool(forKey: K.dtPingDefaulted)) {
+            doubleTapAction = .pingPhone
+            d.set(MacActionKind.pingPhone.rawValue, forKey: K.dtAction)
+        } else {
+            doubleTapAction = MacActionKind(rawValue: storedAction ?? "") ?? .none
+        }
+        d.set(true, forKey: K.dtPingDefaulted)
+        #else
         doubleTapAction = MacActionKind(rawValue: d.string(forKey: K.dtAction) ?? "") ?? .none
+        #endif
         doubleTapShortcut = d.string(forKey: K.dtShortcut) ?? ""
         autoLockOnWristOff = d.object(forKey: K.autoLock) as? Bool ?? false
         wristOffShortcut = d.string(forKey: K.wristOffShortcut) ?? ""

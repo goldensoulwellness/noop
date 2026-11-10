@@ -310,7 +310,9 @@ final class AppModel: ObservableObject {
         // Re-arm the next day's firmware alarm the moment the strap reports it fired (if/when the
         // firmware pushes STRAP_DRIVEN_ALARM_EXECUTED). Gated on enabled inside applySmartAlarm.
         live.onSmartAlarmFired = { [weak self] in
-            guard let self, self.behavior.smartAlarmEnabled else { return }
+            guard let self else { return }
+            self.lastSmartAlarmFiredAt = Date()
+            guard self.behavior.smartAlarmEnabled else { return }
             // PR #577 (iOS): mirror the strap's wake buzz to a local notification so a phone-in-pocket
             // user still gets woken; no-op on macOS / when wrist alerts are off.
             AppModel.postSmartAlarm()
@@ -1801,12 +1803,35 @@ final class AppModel: ObservableObject {
         }
         lastDoubleTapAt = now
         if let override = strapDoubleTapOverride {
-            live.append(log: Self.stamped("Double-tap → Lift Log: next"))
+            live.append(log: Self.stamped("Double-tap → claimed by the screen in front (Lift Log / Sleep Clock)"))
             override()
+            return
+        }
+        // A double tap around alarm time is the user silencing the strap's alarm, not asking where the
+        // phone is — the strap's firmware alarm is dismissed with the very same gesture.
+        if behavior.doubleTapAction == .pingPhone, strapAlarmNearby {
+            live.append(log: Self.stamped("Double-tap ignored: alarm time (dismiss gesture, not a ping)"))
             return
         }
         live.append(log: Self.stamped("Double-tap → \(behavior.doubleTapAction.label)"))
         runMacAction(behavior.doubleTapAction, shortcut: behavior.doubleTapShortcut)
+    }
+
+    /// When the strap last reported its firmware alarm went off (if the firmware pushes that).
+    private var lastSmartAlarmFiredAt: Date = .distantPast
+
+    /// True from five minutes before a scheduled strap alarm until fifteen minutes after it, and for
+    /// fifteen minutes after the strap reports the alarm fired: the stretch in which a double tap means
+    /// "I'm up".
+    var strapAlarmNearby: Bool {
+        let now = Date()
+        if now.timeIntervalSince(lastSmartAlarmFiredAt) < 15 * 60 { return true }
+        guard behavior.smartAlarmEnabled,
+              let fire = Self.nextSmartAlarmDate(minutes: behavior.smartAlarmMinutes,
+                                                 weekdays: behavior.smartAlarmWeekdays,
+                                                 overrides: WindDownNudge.perDayWakeOverrides,
+                                                 from: now.addingTimeInterval(-15 * 60)) else { return false }
+        return fire.timeIntervalSince(now) <= 5 * 60
     }
 
     /// Run a configured Mac action. In-app actions (buzz/moment) stay on-device; lock + shortcuts
@@ -1814,6 +1839,7 @@ final class AppModel: ObservableObject {
     func runMacAction(_ kind: MacActionKind, shortcut: String) {
         switch kind {
         case .none: break
+        case .pingPhone: PhonePing.play()
         case .lockScreen:
             if !MacActions.lockScreen() {
                 #if os(macOS)
