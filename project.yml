@@ -268,6 +268,10 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         UIBackgroundModes:
           - bluetooth-central
+          # Ping-your-phone: the "Ping iPhone" double-tap action must sound with the app in the background
+          # (that is the whole point of finding a lost phone). The strap event already wakes the app through
+          # bluetooth-central; this mode lets the audio session start from that background wake.
+          - audio
           # #524: keep recording an outdoor workout's GPS route while the app is backgrounded (screen off),
           # matching Android's foreground-service capture. Required by GpsWorkoutRecorder's
           # allowsBackgroundLocationUpdates; without this mode iOS crashes when background updates start.

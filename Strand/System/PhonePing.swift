@@ -3,35 +3,81 @@ import Foundation
 #if os(iOS)
 import AudioToolbox
 import UIKit
+import UserNotifications
 #endif
 
 /// "Where's my phone?" from the wrist: a loud chime the phone plays when the strap is double-tapped,
 /// the way an Apple Watch pings a lost iPhone. The sound is synthesised in memory (no asset to ship),
 /// and on iOS it goes out through the `.playback` category so it is heard with the ring switch on
 /// silent — a phone lost under a cushion is usually a phone on silent.
+///
+/// Works with the app in the BACKGROUND, which is the only case that matters for a lost phone: the
+/// strap's DOUBLE_TAP wakes the app through the bluetooth-central mode, the `audio` background mode lets
+/// the audio session start from that wake, and a short background task keeps the process alive until
+/// the chime has finished. A local notification goes out as well, so the phone also lights up and
+/// buzzes in the way the user already expects, and so something still happens if audio were refused.
 @MainActor
 enum PhonePing {
     private static var player: AVAudioPlayer?
+    private static let chimeSeconds: TimeInterval = 3.2
 
     /// Three rising two-note chimes over about three seconds, plus a vibration on iOS.
     static func play() {
         #if os(iOS)
+        let app = UIApplication.shared
+        var task = UIBackgroundTaskIdentifier.invalid
+        task = app.beginBackgroundTask(withName: "phone-ping") {
+            app.endBackgroundTask(task); task = .invalid
+        }
         let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.playback, options: [.duckOthers])
+        try? session.setCategory(.playback, mode: .default, options: [.duckOthers])
         try? session.setActive(true)
         AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
+        postNotification()
         #endif
-        guard let p = try? AVAudioPlayer(data: chime) else { return }
-        p.volume = 1
-        p.prepareToPlay()
-        p.play()
-        player = p
+        if let p = try? AVAudioPlayer(data: chime) {
+            p.volume = 1
+            p.prepareToPlay()
+            p.play()
+            player = p
+        }
+        #if os(iOS)
+        DispatchQueue.main.asyncAfter(deadline: .now() + chimeSeconds + 0.5) {
+            player = nil
+            try? session.setActive(false, options: .notifyOthersOnDeactivation)
+            if task != .invalid { app.endBackgroundTask(task); task = .invalid }
+        }
+        #endif
     }
+
+    #if os(iOS)
+    /// A banner + the default alert sound, delivered at once. Replaces any earlier ping banner.
+    private static func postNotification() {
+        let center = UNUserNotificationCenter.current()
+        let content = UNMutableNotificationContent()
+        content.title = String(localized: "Here I am")
+        content.body = String(localized: "You double-tapped your strap to find this phone.")
+        content.sound = .default
+        let request = UNNotificationRequest(identifier: "phone-ping", content: content, trigger: nil)
+        center.getNotificationSettings { settings in
+            switch settings.authorizationStatus {
+            case .notDetermined:
+                center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+                    if granted { center.add(request) }
+                }
+            case .denied:
+                break
+            default:
+                center.add(request)
+            }
+        }
+    }
+    #endif
 
     /// Cached PCM WAV of the chime: 44.1 kHz, mono, 16-bit.
     private static let chime: Data = {
         let rate = 44_100.0
-        let total = Int(rate * 3.2)
+        let total = Int(rate * chimeSeconds)
         var samples = [Int16](repeating: 0, count: total)
         // Each ping: a short A6 then a longer E7, both with a quick decay — bright enough to carry
         // through a bag or a couch, short enough not to be alarming.
